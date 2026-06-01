@@ -1,25 +1,11 @@
-"""
-Akilli Otopark - FastAPI Backend
-----------------------------------
-detector.py buraya POST atar, web/mobil buradan okur.
-
-Endpoints:
-  POST /update          → detector.py'den veri al
-  GET  /status          → tum otoparkların durumu
-  GET  /status/{park_id}→ tek otopark durumu
-  WS   /ws              → gercek zamanli websocket
-"""
-
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-import asyncio
 import json
 import time
 
 app = FastAPI(title="Akilli Otopark API")
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,17 +14,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 parking_data: dict = {}
-
-
 clients: list[WebSocket] = []
-
 
 
 class SlotInfo(BaseModel):
     id: int
-    status: str  # "empty" | "occupied"
+    status: str
 
 class ParkingUpdate(BaseModel):
     park_id: str
@@ -49,7 +31,8 @@ class ParkingUpdate(BaseModel):
     occupancy_rate: float
     slots: list[SlotInfo]
     timestamp: Optional[str] = None
-
+    lat: Optional[float] = None
+    lng: Optional[float] = None
 
 
 async def broadcast(data: dict):
@@ -63,8 +46,6 @@ async def broadcast(data: dict):
         clients.remove(ws)
 
 
-
-
 @app.get("/")
 def root():
     return {"message": "Akilli Otopark API calisiyor", "version": "1.0"}
@@ -72,7 +53,6 @@ def root():
 
 @app.post("/update")
 async def update_parking(data: ParkingUpdate):
-    """detector.py her saniye buraya POST atar."""
     parking_data[data.park_id] = {
         "park_id":        data.park_id,
         "name":           data.name,
@@ -83,15 +63,15 @@ async def update_parking(data: ParkingUpdate):
         "slots":          [s.dict() for s in data.slots],
         "timestamp":      data.timestamp or time.strftime("%Y-%m-%dT%H:%M:%S"),
         "last_seen":      time.time(),
+        "lat":            data.lat,
+        "lng":            data.lng,
     }
-    
     await broadcast({"event": "update", "park_id": data.park_id, "data": parking_data[data.park_id]})
     return {"ok": True}
 
 
 @app.get("/status")
 def get_all():
-    """Tum otoparkların durumu."""
     return {
         "parks":       list(parking_data.values()),
         "total_parks": len(parking_data),
@@ -101,7 +81,6 @@ def get_all():
 
 @app.get("/status/{park_id}")
 def get_park(park_id: str):
-    """Tek otopark durumu."""
     if park_id not in parking_data:
         raise HTTPException(status_code=404, detail=f"{park_id} bulunamadi")
     return parking_data[park_id]
@@ -109,14 +88,12 @@ def get_park(park_id: str):
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
-    """Gercek zamanli baglanti — frontend buraya baglanir."""
     await ws.accept()
     clients.append(ws)
-    
     await ws.send_text(json.dumps({"event": "init", "data": list(parking_data.values())}))
     try:
         while True:
-            await ws.receive_text()   
+            await ws.receive_text()
     except WebSocketDisconnect:
         if ws in clients:
             clients.remove(ws)

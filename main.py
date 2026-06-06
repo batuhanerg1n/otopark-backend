@@ -22,6 +22,15 @@ class SlotInfo(BaseModel):
     id: int
     status: str
 
+class ParkInfo(BaseModel):
+    type: Optional[str] = None
+    address: Optional[str] = None
+    capacity: Optional[int] = None
+    hours: Optional[str] = None
+    phone: Optional[str] = None
+    website: Optional[str] = None
+    services: Optional[dict] = None
+
 class ParkingUpdate(BaseModel):
     park_id: str
     name: str
@@ -33,6 +42,7 @@ class ParkingUpdate(BaseModel):
     timestamp: Optional[str] = None
     lat: Optional[float] = None
     lng: Optional[float] = None
+    info: Optional[ParkInfo] = None
 
 
 async def broadcast(data: dict):
@@ -65,6 +75,7 @@ async def update_parking(data: ParkingUpdate):
         "last_seen":      time.time(),
         "lat":            data.lat,
         "lng":            data.lng,
+        "info":           data.info.dict() if data.info else None,
     }
     await broadcast({"event": "update", "park_id": data.park_id, "data": parking_data[data.park_id]})
     return {"ok": True}
